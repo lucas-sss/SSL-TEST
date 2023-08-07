@@ -159,6 +159,7 @@ int main(int argc, char **argv)
         perror("create tun fail");
         goto finish;
     }
+    printf("create tun fd: %d\n", tun_fd);
 
     // 创建client tun读取线程
     param = malloc(sizeof(CLIENT_TUN_THREAD_PARAM));
@@ -169,7 +170,7 @@ int main(int argc, char **argv)
     }
     param->ssl = ssl;
     param->tun_fd = tun_fd;
-    ret = pthread_create(&clientTunThread, NULL, client_tun_thread, ssl);
+    ret = pthread_create(&clientTunThread, NULL, client_tun_thread, param);
     if (ret != 0)
     {
         perror("create client tun thread fail");
@@ -245,6 +246,7 @@ static void *client_tun_thread(void *arg)
         ret_length = read(tun_fd, buf, sizeof(buf));
         if (ret_length < 0)
         {
+            printf("tun read len < 0\n");
             break;
         }
         // 2、分析报文

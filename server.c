@@ -146,6 +146,7 @@ int main()
         /* 等待客户端连上来 */
         if ((new_fd = accept(sockfd, (struct sockaddr *)&client_addr, &len)) == -1)
         {
+            printf("wait for client coonect fail\n");
             goto err;
         }
         else
@@ -173,7 +174,7 @@ int main()
             free(clientSslCache);
             continue;
         }
-        // 加入到链表中
+        // 加入到链表中  TODO 这一步实际需要等到ssl握手完成，并登录成功。在client_ssl_tun_thread线程中执行
         CLIENT_SESSION_T *clientSession = (CLIENT_SESSION_T *)malloc(sizeof(CLIENT_SESSION_T));
         if (clientSession == NULL)
         {
@@ -182,6 +183,7 @@ int main()
         }
         memset(clientSession, 0, sizeof(CLIENT_SESSION_T));
         clientSession->clientSslCache = clientSslCache;
+        memcpy(clientSession->ipv4, "10.12.9.2", strlen("10.12.9.2"));
         ret = saveClientSession(clientSession);
         if (ret != 0)
         {
@@ -264,6 +266,8 @@ static void *client_ssl_tun_thread(void *arg)
         goto finish;
     }
     clientSslCache->handshake = 1;
+    clientSslCache->ssl = ssl;
+    printf("ssl handshark success!\n");
 
     // 接收客户端的消息
     while (1)
@@ -275,6 +279,7 @@ static void *client_ssl_tun_thread(void *arg)
             fprintf(stderr, "ssl read error(%d) errno(%d)\n", SSL_get_error(ssl, len), errno);
             break;
         }
+        printf("read client ssl data len: %d\n", len);
 
         /* 2、写入到虚拟网卡中 */
         int wlen = write(tun_fd, buf, len);
@@ -310,7 +315,7 @@ static void *server_tun_thread(void *arg)
     SERVER_TUN_THREAD_PARAM *param = (SERVER_TUN_THREAD_PARAM *)arg;
     int tun_fd = param->tun_fd;
     size_t ret_length = 0;
-    unsigned char buf[1024];
+    unsigned char buf[MAX_BUF_LEN];
 
     // 2、读取虚拟网卡数据
     while (1)
@@ -319,13 +324,14 @@ static void *server_tun_thread(void *arg)
         ret_length = read(tun_fd, buf, sizeof(buf));
         if (ret_length < 0)
         {
+            printf("tun read len < 0\n");
             break;
         }
         // 2、分析报文
         unsigned char src_ip[4];
         unsigned char dst_ip[4];
-        memcpy(src_ip, &buf[16], 4);
-        memcpy(dst_ip, &buf[20], 4);
+        memcpy(dst_ip, &buf[16], 4);
+        memcpy(src_ip, &buf[12], 4);
         printf("read tun data: %d.%d.%d.%d -> %d.%d.%d.%d (%d)\n", dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3],
                src_ip[0], src_ip[1], src_ip[2], src_ip[3], ret_length);
 
@@ -339,14 +345,24 @@ static void *server_tun_thread(void *arg)
             printf("not found ssl session\n");
             continue;
         }
+        if (!session->clientSslCache)
+        {
+            continue;
+        }
+        if (session->clientSslCache->handshake != 1)
+        {
+            continue;
+        }
 
+        printf("ready write data to ssl\n");
         // 4、发消息给客户端
         int len = SSL_write(session->clientSslCache->ssl, buf, ret_length);
         if (len <= 0)
         {
             printf("消息'%s'发送失败! 错误代码是%d, 错误信息是'%s'\n", buf, errno, strerror(errno));
         }
-        bzero(buf, MAX_BUF_LEN + 1);
+        printf("write data to success\n");
+        bzero(buf, MAX_BUF_LEN);
     }
 }
 
@@ -357,6 +373,7 @@ static CLIENT_SESSION_T *searchClientSession(char *ipv4)
     {
         return NULL;
     }
+    printf("search client session for ipv4: %s\n", ipv4);
 
     CLIENT_SESSION_T *next = NULL;
     next = globalClientSession.next;
@@ -364,6 +381,7 @@ static CLIENT_SESSION_T *searchClientSession(char *ipv4)
     {
         if ((strcmp(next->ipv4, ipv4) == 0))
         {
+            printf("search session success for: %s\n", ipv4);
             return next;
         }
         next = next->next;
