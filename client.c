@@ -13,7 +13,10 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#define MAX_BUF_SIZE 1500
+#include "protocol.h"
+#include "tun.h"
+
+#define MAX_BUF_SIZE 20480
 
 typedef struct
 {
@@ -51,7 +54,11 @@ int main(int argc, char **argv)
     int sockfd, tun_fd, len;
     int ret;
     struct sockaddr_in dest;
-    char buffer[MAX_BUF_SIZE + 1];
+    unsigned char buffer[MAX_BUF_SIZE + HEADER_LEN];
+    unsigned char packet[MAX_BUF_SIZE];
+    unsigned int depack_len = 0;
+    unsigned char *next;
+    unsigned int next_len = 0;
     CLIENT_TUN_THREAD_PARAM *param = NULL;
     pthread_t clientTunThread;
 
@@ -134,7 +141,7 @@ int main(int argc, char **argv)
         perror("Connect ");
         exit(errno);
     }
-    printf("server connected\n");
+    // printf("server connected\n");
 
     /* 基于 ctx 产生一个新的 SSL */
     ssl = SSL_new(ctx);
@@ -179,26 +186,39 @@ int main(int argc, char **argv)
 
     while (1)
     {
-        // 接收对方发过来的消息，最多接收 MAXBUF 个字节
-        bzero(buffer, MAX_BUF_SIZE + 1);
-
+        if (next == NULL)
+        {
+            next = buffer;
+            next_len = 0;
+        }
         /* 1、接收服务器来的消息 */
-        len = SSL_read(ssl, buffer, MAX_BUF_SIZE);
-        if (len > 0)
-            printf("接收消息成功:'%s'，共%d个字节的数据\n", buffer, len);
-        else
+        len = SSL_read(ssl, next + next_len, sizeof(buffer) - next_len);
+        if (len <= 0)
         {
             printf("消息接收失败！错误代码是%d，错误信息是'%s'\n", errno, strerror(errno));
             goto finish;
         }
 
-        // TODO 读取到登录成功消息之后再创建虚拟网卡
-
-        /* 2、写入到虚拟网卡 */
-        int wlen = write(tun_fd, buffer, len);
-        if (wlen < len)
+        // 2、对数据进行解包
+        depack_len = sizeof(packet);
+        while ((ret = depack(next, len, packet, &depack_len, &next, &next_len)) > 0)
         {
-            printf("虚拟网卡写入数据长度小于预期长度, write len: %d, buffer len: %d\n", wlen, len);
+            /* 3、写入到虚拟网卡 */
+            // TODO 判定数据类型
+            int datalen = depack_len - RECORD_HEADER_LEN;
+            int wlen = write(tun_fd, packet + RECORD_HEADER_LEN, datalen);
+            if (wlen < datalen)
+            {
+                printf("虚拟网卡写入数据长度小于预期长度, write len: %d, buffer len: %d\n", wlen, len);
+            }
+            if (next == NULL)
+            {
+                break;
+            }
+        }
+        if (ret < 0)
+        {
+            printf("非vpn协议数据\n");
         }
     }
 
@@ -238,6 +258,8 @@ static void *client_tun_thread(void *arg)
     SSL *ssl = param->ssl;
     int tun_fd = param->tun_fd;
     unsigned char buf[MAX_BUF_SIZE + 1];
+    unsigned char packet[MAX_BUF_SIZE + 1 + HEADER_LEN];
+    unsigned int enpack_len = 0;
 
     // 2、读取虚拟网卡数据
     while (1)
@@ -254,11 +276,15 @@ static void *client_tun_thread(void *arg)
         unsigned char dst_ip[4];
         memcpy(src_ip, &buf[16], 4);
         memcpy(dst_ip, &buf[20], 4);
-        printf("read tun data: %d.%d.%d.%d -> %d.%d.%d.%d (%d)\n", dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3],
-               src_ip[0], src_ip[1], src_ip[2], src_ip[3], ret_length);
+        // printf("read tun data: %d.%d.%d.%d -> %d.%d.%d.%d (%d)\n", dst_ip[0], dst_ip[1], dst_ip[2], dst_ip[3],
+        //        src_ip[0], src_ip[1], src_ip[2], src_ip[3], ret_length);
 
-        // 3、直接发送到服务端
-        int len = SSL_write(ssl, buf, ret_length);
+        // 3、对数据进行封包
+        enpack_len = sizeof(packet);
+        enpack(RECORD_TYPE_DATA, buf, ret_length, packet, &enpack_len);
+
+        // 4、直接发送到服务端
+        int len = SSL_write(ssl, packet, enpack_len);
         if (len <= 0)
         {
             printf("消息'%s'发送失败! 错误代码是%d, 错误信息是'%s'\n", buf, errno, strerror(errno));

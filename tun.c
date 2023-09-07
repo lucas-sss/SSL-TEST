@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <linux/if.h>
 #include <linux/if_tun.h>
+#include <unistd.h>
 
 #include "tun.h"
 
@@ -95,7 +96,7 @@ int tun_create(char *dev, char *ipv4, char *ipv4_net)
     }
 
     memset(&tunCfg, 0, sizeof(TUNCONFIG_T));
-    tunCfg.mtu = 3000;
+    tunCfg.mtu = 1500;
     memcpy(tunCfg.dev, dev, strlen(dev));
     memcpy(tunCfg.ipv4, ipv4, strlen(ipv4));
     memcpy(tunCfg.ipv4_net, ipv4_net, strlen(ipv4_net));
