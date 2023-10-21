@@ -67,7 +67,7 @@ int main()
     int ret = 0;
     int sockfd, new_fd, tun_fd;
     struct sockaddr_in server_addr, client_addr;
-    int server_port = 9112;
+    int server_port = 8112;
     socklen_t len;
 
     SSL_CTX *ctx = NULL;
