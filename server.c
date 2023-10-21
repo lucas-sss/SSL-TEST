@@ -62,7 +62,7 @@ static int saveClientSession(CLIENT_SESSION_T *clientSession);
 static pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 static CLIENT_SESSION_T globalClientSession;
 
-int main()
+int main(int argc, char **argv)
 {
     int ret = 0;
     int sockfd, new_fd, tun_fd;
@@ -71,6 +71,13 @@ int main()
     socklen_t len;
 
     SSL_CTX *ctx = NULL;
+
+    if (argc > 2)
+    {
+        server_port = atoi(argv[1]);
+        if (server_port <= 0 || server_port > 65535)
+            server_port = 1443;
+    }
 
     // 创建ssl上下文
     ctx = createSSLCtx();
@@ -298,6 +305,7 @@ static void *client_ssl_tun_thread(void *arg)
         depack_len = sizeof(packet);
         while ((ret = depack(next, len, packet, &depack_len, &next, &next_len)) > 0)
         {
+            len = next_len;
             /* 3、写入到虚拟网卡 */
             // TODO 判定数据类型
             int datalen = depack_len - RECORD_HEADER_LEN;
@@ -306,10 +314,7 @@ static void *client_ssl_tun_thread(void *arg)
             {
                 printf("虚拟网卡写入数据长度小于预期长度, write len: %d, buffer len: %d\n", wlen, len);
             }
-            if (next == NULL)
-            {
-                break;
-            }
+            depack_len = sizeof(packet);
         }
         if (ret < 0)
         {

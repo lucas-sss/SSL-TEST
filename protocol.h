@@ -2,7 +2,7 @@
  * @Author: lw liuwei@flksec.com
  * @Date: 2023-09-06 10:02:22
  * @LastEditors: lw liuwei@flksec.com
- * @LastEditTime: 2023-09-06 23:16:48
+ * @LastEditTime: 2023-09-07 16:26:22
  * @FilePath: \stream-echo-nginx-module-master\src\protocol.h
  * @Description: 这是默认设置,请设置`customMade`, 打开koroFileHeader查看配置 进行设置: https://github.com/OBKoro1/koro1FileHeader/wiki/%E9%85%8D%E7%BD%AE
  */
@@ -22,8 +22,8 @@
 // extern const char RECORD_TYPE_AUTH[RECORD_TYPE_LABEL_LEN] = {0x12, 0x12};
 // extern const char RECORD_TYPE_ALARM[RECORD_TYPE_LABEL_LEN] = {0x12, 0x13};
 
-extern const int HEADER_LEN;
-extern const int RECORD_HEADER_LEN;
+extern const unsigned int HEADER_LEN;
+extern const unsigned int RECORD_HEADER_LEN;
 
 extern const unsigned char VPN_LABEL[VPN_LABEL_LEN]; // vpn数据标记
 extern const unsigned char RECORD_TYPE_DATA[RECORD_TYPE_LABEL_LEN];

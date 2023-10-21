@@ -203,6 +203,7 @@ int main(int argc, char **argv)
         depack_len = sizeof(packet);
         while ((ret = depack(next, len, packet, &depack_len, &next, &next_len)) > 0)
         {
+            len = next_len;
             /* 3、写入到虚拟网卡 */
             // TODO 判定数据类型
             int datalen = depack_len - RECORD_HEADER_LEN;
@@ -211,10 +212,7 @@ int main(int argc, char **argv)
             {
                 printf("虚拟网卡写入数据长度小于预期长度, write len: %d, buffer len: %d\n", wlen, len);
             }
-            if (next == NULL)
-            {
-                break;
-            }
+            depack_len = sizeof(packet);
         }
         if (ret < 0)
         {
